@@ -1,0 +1,532 @@
+# HOME IT INFRASTRUCTURE ENGINEERING
+## Active Directory Integration, Linux Authentication & Domain Controller Availability
+
+**Technical Progress Report — Phase 0: Infrastructure Deployment and Troubleshooting**
+
+**Prepared by:** IT Infrastructure & Security Administrator  
+**Submitted to:** IT Operations Manager  
+**Reporting Date:** November 18, 2026  
+**Environment:** Private Home IT Laboratory  
+**Classification:** Public Portfolio Edition — Sanitized  
+**Project Status:** Initial Deployment Successful | Operational Hardening Pending
+
+---
+
+## 1. Executive Summary
+
+**Manager,**
+
+Apparently, the assignment was to build a functioning IT department inside a residential network. Simple enough, right? Except that the infrastructure decided to demonstrate why IT professionals have trust issues.
+
+The objective was to establish a Windows Server Active Directory environment, integrate a physical Kali Linux workstation, enable centralized domain authentication, and maintain domain controller availability independently of an interactive Linux desktop session.
+
+We successfully accomplished those objectives.
+
+The environment now supports:
+
+- Windows Server 2025 Active Directory Domain Services.
+- DNS-based domain controller discovery.
+- Kerberos authentication and Samba Winbind integration.
+- Graphical Linux login using an Active Directory account.
+- Domain-based identity and security group resolution.
+- A headless VirtualBox domain controller managed through systemd.
+- Domain controller persistence after the original Linux user logs out.
+- Configured automatic service startup.
+
+The most significant incident involved domain authentication failing at the graphical login screen despite successful command-line authentication.
+
+Root-cause investigation identified a domain controller availability dependency associated with the original graphical VirtualBox session. Migrating the VM to a systemd-managed headless process resolved the observed login failure.
+
+**Current assessment:** Core infrastructure and cross-platform authentication are operational. Backup validation, controlled reboot testing, and production-grade recovery procedures remain outstanding.
+
+In other words, the system works. Now we make sure it keeps working when the universe decides to be inconvenient.
+
+---
+
+## 2. Project Objectives
+
+The initial deployment established the technical foundation for a centrally managed household IT environment.
+
+**Primary objectives**
+
+1. Deploy a Windows Server domain controller.
+2. Establish Active Directory and DNS services.
+3. Connect the domain controller to the residential network.
+4. Integrate a physical Linux workstation with Active Directory.
+5. Authenticate domain users through the Linux graphical login manager.
+6. Maintain domain controller availability independently of local graphical sessions.
+7. Establish a foundation for centralized endpoint administration, security monitoring, and IT service management.
+
+**Scope limitation:** This phase focused on the infrastructure host, domain controller, and Linux authentication. Full household endpoint onboarding has not yet been completed.
+
+---
+
+## 3. Infrastructure Overview
+
+### 3.1 Architecture
+
+```text
+                 PRIVATE HOME NETWORK
+                         |
+                  ISP Router / LAN
+                         |
+                Internal Network
+                         |
+             +-----------------------+
+             | Physical Linux Host   |
+             | Kali Linux            |
+             | IP: [REDACTED]        |
+             |                       |
+             | VirtualBox Hypervisor |
+             | systemd User Service  |
+             +-----------+-----------+
+                         |
+                 Bridged Adapter
+                         |
+             +-----------+-----------+
+             | Windows Server 2025   |
+             | Domain Controller     |
+             | Host: [REDACTED]      |
+             | IP: [REDACTED]        |
+             |                       |
+             | Active Directory      |
+             | DNS / Kerberos        |
+             +-----------+-----------+
+                         |
+                 AD Authentication
+                         |
+             +-----------+-----------+
+             | Linux Domain Session  |
+             | User: [REDACTED]      |
+             | Winbind / PAM /       |
+             | Kerberos / LightDM    |
+             +-----------------------+
+```
+
+### 3.2 Technology Stack
+
+| Component | Technology | Function |
+|---|---|---|
+| Physical host | Kali Linux | Workstation and virtualization host |
+| Hypervisor | Oracle VirtualBox | Windows Server virtualization |
+| Domain controller | Windows Server 2025 | Directory and identity services |
+| Directory service | Active Directory Domain Services | Centralized identity management |
+| Name resolution | Microsoft DNS | Domain controller discovery |
+| Authentication | Kerberos | Domain authentication |
+| Linux integration | Samba Winbind | Domain account and group resolution |
+| Login framework | PAM / LightDM | Graphical authentication |
+| Desktop session | XFCE | Domain user desktop |
+| Service manager | systemd | Headless VM lifecycle management |
+
+**Security note:** Internal hostnames, domain identifiers, account names, IP addresses, and virtual machine identifiers have been removed from this public edition.
+
+---
+
+## 4. Implementation Summary
+
+### 4.1 Active Directory Foundation
+
+A Windows Server 2025 virtual machine was configured as the domain controller for a private Active Directory environment.
+
+The existing laboratory configuration includes domain users, security groups, organizational units, and domain-joined test systems.
+
+Recorded configuration snapshots also describe workstation auditing and account security policies.
+
+These earlier settings are part of the documented lab baseline; a comprehensive policy compliance audit is scheduled for a later phase.
+
+### 4.2 Network Integration
+
+The domain controller was transitioned from isolated VirtualBox networking to a bridged configuration attached to the Linux host's wireless network interface.
+
+Validation included:
+
+- Virtual network adapter status.
+- Physical bridge interface configuration.
+- IP addressing and routing.
+- DNS resolver configuration.
+- Domain controller hostname resolution.
+- Active Directory NETLOGON connectivity.
+
+The final verified configuration showed the Linux workstation resolving the domain controller through its designated internal DNS server.
+
+### 4.3 Linux Domain Integration
+
+The Linux workstation was integrated with Active Directory using Samba Winbind and Kerberos.
+
+Validation commands included:
+
+```bash
+wbinfo --ping-dc
+getent passwd <domain-user>
+kinit <user>@<domain-realm>
+klist
+```
+
+The tests established that the workstation could discover the domain controller, resolve domain identities, authenticate through Kerberos, and access the domain user's Linux home directory.
+
+A successful command-line authentication did not initially translate into a successful graphical login.
+
+Naturally, that would have been too easy.
+
+---
+
+## 5. Incident Report: Graphical Domain Login Failure
+
+**Incident ID:** HOME-INC-001  
+**Category:** Identity and Authentication  
+**Severity:** High — Laboratory Authentication Availability  
+**Status:** Resolved in observed testing
+
+### 5.1 Problem Description
+
+An Active Directory account successfully authenticated through command-line tools but failed to establish a graphical Linux session.
+
+The graphical login manager returned to the authentication prompt, indicating that the session could not be established.
+
+### 5.2 Investigation
+
+The troubleshooting process examined multiple layers rather than assuming the password was incorrect.
+
+| Diagnostic area | Finding |
+|---|---|
+| Domain controller discovery | Successful while server available |
+| Winbind identity resolution | Successful |
+| Kerberos ticket acquisition | Successful |
+| Linux home directory access | Successful |
+| PAM authentication | Successful during direct testing |
+| Graphical session configuration | Available |
+| Login manager logs | Domain controller unavailable during failed attempts |
+
+The critical diagnostic evidence was:
+
+```text
+NT_STATUS_NO_LOGON_SERVERS
+```
+
+This indicated that an available domain controller could not be contacted during the failed authentication attempt.
+
+### 5.3 Root-Cause Assessment
+
+The domain controller was originally launched through a graphical VirtualBox process associated with the local Linux user's desktop session.
+
+The investigation identified a likely availability dependency between that session and the virtualized domain controller.
+
+When the local user logged out, the domain controller was not reliably available to service subsequent domain authentication requests.
+
+This assessment was supported by the successful outcome after moving the VM to systemd-managed headless operation.
+
+### 5.4 Corrective Action
+
+The domain controller was migrated to a headless VirtualBox process managed by a persistent systemd user service.
+
+The Linux user manager was configured to remain active after logout.
+
+### 5.5 Validation
+
+After the migration:
+
+- The domain controller remained running after the original Linux user logged out.
+- A domain user successfully logged into the graphical Linux desktop.
+- The domain account resolved to the expected UID and group memberships.
+- Kerberos issued a valid Ticket Granting Ticket.
+- The systemd user manager retained the VirtualBox process.
+
+**Incident outcome:** Resolved for the tested graphical logout and domain authentication scenario.
+
+---
+
+## 6. Incident Report: Virtual Machine Session Lock
+
+**Incident ID:** HOME-INC-002  
+**Category:** Virtualization Operations  
+**Status:** Resolved
+
+### Problem
+
+A headless VM startup was attempted while the same virtual machine was already running through the graphical VirtualBox process.
+
+VirtualBox returned:
+
+```text
+VBOX_E_INVALID_OBJECT_STATE
+```
+
+### Investigation
+
+Process inspection confirmed that the existing virtual machine was still running.
+
+### Corrective Action
+
+The Windows Server guest was shut down using its graphical interface and the planned shutdown option.
+
+The VM was then restarted using:
+
+```bash
+VBoxManage startvm "<vm-name>" --type headless
+```
+
+### Outcome
+
+The VM successfully launched using `VBoxHeadless`.
+
+**Lesson learned:** A virtual machine must be transitioned between execution modes through a controlled shutdown and startup procedure.
+
+---
+
+## 7. Incident Report: Domain Controller Discovery Delay
+
+**Incident ID:** HOME-INC-003  
+**Category:** DNS / Identity Services  
+**Status:** Resolved in observed testing
+
+### Problem
+
+Immediately after the VM started under systemd, Winbind returned:
+
+```text
+WBC_ERR_DOMAIN_NOT_FOUND
+```
+
+### Investigation
+
+The following were checked:
+
+- VirtualBox adapter state.
+- Linux IP configuration.
+- DNS resolver configuration.
+- Domain controller hostname resolution.
+- Winbind NETLOGON connectivity.
+
+The virtual machine was running, but the domain services were not yet available during the initial checks.
+
+### Resolution
+
+Subsequent connectivity tests succeeded after the server had additional time to initialize.
+
+### Operational Finding
+
+Virtual machine process availability and Active Directory service readiness are different conditions.
+
+A future monitoring implementation should distinguish between:
+
+1. Hypervisor process running.
+2. Guest operating system reachable.
+3. DNS service responding.
+4. Active Directory authentication operational.
+
+---
+
+## 8. Incident Report: Domain User Privilege Separation
+
+**Incident ID:** HOME-SEC-001  
+**Category:** Identity and Access Management  
+**Status:** Expected Security Behavior
+
+### Observation
+
+A domain-authenticated Linux user attempted to execute privileged commands and received:
+
+```text
+user is not in the sudoers file
+```
+
+### Assessment
+
+The account was successfully authenticated but had not been authorized for Linux root-level administration.
+
+This demonstrates the separation between authentication and authorization.
+
+### Security Decision
+
+No unrestricted administrator privileges were assigned.
+
+A later phase will evaluate group-based sudo access using a dedicated Active Directory administrative group and narrowly scoped privilege policies.
+
+**Security principle:** Domain membership does not imply administrator access.
+
+Even in a home lab, giving everyone root access is a spectacularly bad experiment.
+
+---
+
+## 9. Headless Domain Controller Service
+
+A systemd user service was implemented to manage the Windows Server VM independently of an interactive desktop session.
+
+### Configuration
+
+```ini
+[Unit]
+Description=Active Directory Domain Controller VM
+
+[Service]
+Type=exec
+ExecStart=/usr/lib/virtualbox/VBoxHeadless --startvm <REDACTED-VM-UUID>
+ExecStop=%h/.local/bin/<shutdown-helper>.sh
+TimeoutStopSec=300
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=default.target
+```
+
+The service was configured for automatic startup, and user lingering was enabled.
+
+### Verification
+
+```text
+Service enabled: yes
+Service active: yes
+User lingering: yes
+VM process: VBoxHeadless
+Domain authentication: successful
+```
+
+### Operational Caveat
+
+The shutdown helper requests an ACPI shutdown and waits for the VM to power off.
+
+Previous ACPI shutdown testing did not consistently result in a completed Windows shutdown.
+
+The current configuration also uses systemd's default control-group process termination behavior.
+
+Therefore, graceful shutdown during a full Linux host shutdown has **not yet been validated**.
+
+This remains an operational risk and must be addressed before the environment is treated as production-ready.
+
+---
+
+## 10. Final Authentication Validation
+
+The successful domain login was verified through multiple independent checks.
+
+### User Identity
+
+```text
+Authenticated user: [REDACTED]
+UID: [REDACTED]
+Primary group: Domain Users
+Additional group: IT Users
+Home directory: [REDACTED]
+```
+
+### Kerberos
+
+```text
+Default principal: [REDACTED]@[REDACTED]
+Service principal: krbtgt/[REDACTED]
+Ticket status: Valid
+```
+
+### Service Persistence
+
+The original Linux user's systemd manager continued running the domain controller VM while a separate domain account was logged into the workstation.
+
+**Result:** The primary cross-platform authentication objective was achieved.
+
+---
+
+## 11. Risk Assessment
+
+| Risk | Impact | Priority | Planned action |
+|---|---|---|---|
+| Domain controller depends on everyday workstation | Authentication outage when host unavailable | High | Evaluate dedicated always-on host |
+| Clean host shutdown unverified | VM or directory data integrity risk | High | Validate shutdown and recovery procedures |
+| Supported AD backup not yet validated | Potential directory recovery failure | High | Implement and test system-state backups |
+| Single domain controller | Single point of failure | High | Document availability and recovery strategy |
+| DNS depends on domain controller | Domain service interruption | Medium–High | Document DNS dependencies and outage behavior |
+| Administrative access model incomplete | Inconsistent privilege assignments | Medium | Implement least-privilege access matrix |
+| Endpoint inventory incomplete | Limited visibility into household devices | Medium | Complete asset discovery |
+| Centralized monitoring incomplete | Delayed fault detection | Medium | Deploy availability and log monitoring |
+
+These ratings are preliminary and will be refined during the formal risk assessment.
+
+---
+
+## 12. Next Reporting Period: Planned Work
+
+### Priority 1 — Infrastructure Documentation
+
+Create a complete technical inventory covering:
+
+- Physical hardware and operating systems.
+- Virtual machines and assigned roles.
+- Network interfaces, addressing, and DNS dependencies.
+- Domain services and authentication paths.
+- Household devices and management eligibility.
+
+### Priority 2 — Architecture Diagrams
+
+Produce professional diagrams documenting:
+
+- Physical and logical network topology.
+- Active Directory authentication flow.
+- VirtualBox and systemd service dependencies.
+- Infrastructure availability and failure points.
+
+### Priority 3 — Backup and Recovery
+
+Implement supported Windows Server and Active Directory backup procedures.
+
+Validate recovery using a controlled, isolated test environment rather than casually restoring domain controller snapshots.
+
+### Priority 4 — Security and Access Control
+
+Review:
+
+- Domain user and group assignments.
+- Linux administrative access.
+- Password and lockout policies.
+- Windows and Linux security baselines.
+- Router and firewall configurations.
+
+### Priority 5 — IT Operations
+
+Prepare the environment for:
+
+- Asset management.
+- Help desk ticketing.
+- Endpoint onboarding.
+- Centralized logging.
+- Availability monitoring.
+- Incident response procedures.
+
+---
+
+## 13. Management Assessment
+
+**Overall status:** Initial technical objectives achieved.
+
+The environment successfully demonstrates Windows Active Directory integration with a physical Linux workstation, including graphical authentication, Kerberos ticket acquisition, domain group resolution, and persistent operation of a virtualized domain controller across graphical logout.
+
+The project also produced practical troubleshooting evidence involving authentication failures, virtualization process management, DNS discovery, operating system permissions, and service lifecycle configuration.
+
+**Remaining work:** Operational resilience, backup validation, recovery testing, documentation, and security hardening.
+
+**Recommendation:** Approve progression to the infrastructure assessment and documentation phase while prioritizing backup and shutdown reliability before expanding domain services to additional household devices.
+
+---
+
+## 14. Engineer's Closing Notes
+
+Manager,
+
+The domain controller is online. Linux is talking to Windows. Kerberos is issuing tickets. The graphical login works. The virtual machine survived the original user's logout.
+
+We took a collection of components that initially refused to cooperate and turned them into a functioning identity infrastructure.
+
+More importantly, we didn't solve the problem by throwing administrator privileges at everyone or repeatedly reinstalling software until something happened to work.
+
+We investigated the evidence, isolated the dependency, changed the service architecture, and verified the result.
+
+That's engineering.
+
+Now comes the less glamorous part: documenting everything, establishing recovery procedures, monitoring the environment, and making sure one laptop doesn't become the single point of failure for an entire household.
+
+Because building a system that works once is a demonstration.
+
+**Building a system that is secure, maintainable, observable, and recoverable is professional IT.**
+
+**End of Progress Report**
+
+*Public portfolio edition. Private identifiers and sensitive infrastructure details have been intentionally redacted. All completed-work claims are based on observed laboratory tests; untested recovery and availability capabilities are explicitly identified.*
